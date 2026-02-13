@@ -2,6 +2,9 @@
 
 ### A general purpose motion capture system built from the ground up, used to autonomously fly multiple drones indoors
 
+## Drone Umbrella Application
+We plan to use this code to make a drone umbrella follow a person and protect them from rain. 
+
 ## YouTube Video
 Watch this for information about the project & a demo!
 [https://youtu.be/0ql20JKrscQ?si=jkxyOe-iCG7fa5th](https://youtu.be/0ql20JKrscQ?si=jkxyOe-iCG7fa5th)
@@ -41,4 +44,3 @@ My blog post has some more information about the drones & camera: [joshuabird.co
 This motion capture system is an "outside-in" system, with external cameras tracking objects within a fixed space. There are also "inside-out" systems which use cameras on the drones/robots to determine their locations, not requiring any external infrastructure. 
 
 My undergraduate dissertation presents such a system, which is capable of localizing multiple agents within a world in real time using purely visual data, with state-of-the-art performance. Check it out here: [https://github.com/jyjblrd/distributed_visual_SLAM](https://github.com/jyjblrd/distributed_visual_SLAM)
->>>>>>> upstream/main
