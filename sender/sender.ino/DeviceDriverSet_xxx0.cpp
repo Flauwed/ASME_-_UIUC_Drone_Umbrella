@@ -5,6 +5,9 @@
  * @LastEditTime: 2019-10-15 11:51:54
  * @LastEditors: Please set LastEditors
  */
+#ifndef LED_BUILTIN
+#define LED_BUILTIN 2
+#endif
 
 #include "DeviceDriverSet_xxx0.h"
 #include "I2Cdev.h"
@@ -119,26 +122,38 @@ void DeviceDriverSet_MPU6050::DeviceDriverSet_MPU6050_Init(void)
 
 }
 
-void DeviceDriverSet_MPU6050::DeviceDriverSet_MPU6050_getYawPitchRoll(float *yaw, float *pitch, float *roll)
+void DeviceDriverSet_MPU6050::DeviceDriverSet_MPU6050_getAccelerationXYZ(void)
+{
+  if (!DMPReady) return; // Stop if DMP programming failed.
+
+  if (mpu.dmpGetCurrentFIFOPacket(FIFOBuffer)) { // Get the latest packet
+    mpu.dmpGetQuaternion(&quaternion, FIFOBuffer);
+    mpu.dmpGetAccel(&aa, FIFOBuffer);
+    mpu.dmpGetGravity(&gravity, &quaternion);
+    mpu.dmpGetLinearAccel(&aaReal, &aa, &gravity);
+
+    Accel.X = aaReal.x;
+    Accel.Y = aaReal.y;
+    Accel.Z = aaReal.z;
+  }
+}
+
+void DeviceDriverSet_MPU6050::DeviceDriverSet_MPU6050_getYawPitchRoll(void)
 {
   if (!DMPReady) return; // Stop the program if DMP programming fails.
     
   /* Read a packet from FIFO */
-  if (mpu.dmpGetCurrentFIFOPacket(FIFOBuffer)) { // Get the Latest packet 
+  if (mpu.dmpGetCurrentFIFOPacket(FIFOBuffer)) { // Get the Latest packet
     /* Display Euler angles in degrees */
     mpu.dmpGetQuaternion(&quaternion, FIFOBuffer);
     mpu.dmpGetGravity(&gravity, &quaternion);
     mpu.dmpGetYawPitchRoll(ypr, &quaternion, &gravity);
-    *yaw = fmod(-ypr[0] * 180/M_PI + 360, 360);
-    *roll = (ypr[1] * 180/M_PI);
-    *pitch = ypr[2] * 180/M_PI;
+
+    Angle.Yaw = fmod(-ypr[0] * 180 / M_PI + 360, 360);
+    Angle.Roll = ypr[1] * 180 / M_PI;
+    Angle.Pitch = ypr[2] * 180 / M_PI;
+
     Serial.print("yaw: ");
-    Serial.println(*yaw);
-    // Serial.print("ypr\t");
-    // Serial.print(ypr[0] * 180/M_PI);
-    // Serial.print("\t");
-    // Serial.print(ypr[1] * 180/M_PI);
-    // Serial.print("\t");
-    // Serial.println(ypr[2] * 180/M_PI);
+    Serial.println(Angle.Yaw);
   }
 }
