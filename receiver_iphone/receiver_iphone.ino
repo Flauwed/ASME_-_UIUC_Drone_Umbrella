@@ -10,13 +10,12 @@ WiFiUDP udp;
 
 // Cross-platform struct padding: enforces exact 28-byte size
 typedef struct __attribute__((packed)) {
-  float yaw;
   float pitch;
   float roll;
-  float ax;
-  float ay;
-  float az;       // We will use 'az' as our Throttle slider (0.0 to 1.0)
-  int32_t button; // 1 = Arm, 0 = Disarm
+  float thrust;
+  bool arm_drone;
+  bool killswitch;
+  bool hold_alt;
 } data_struct;
 
 data_struct myData;
@@ -30,12 +29,9 @@ uint16_t crsfChannels[16];
 
 // [Keep your existing crsf_crc8, constrainCrsf, mapFloatToCRSF, and sendCRSFChannels functions here]
 void PrintDataStruct() {
-  Serial.print(myData.yaw);   Serial.print("\t");
-  Serial.print(myData.pitch); Serial.print("\t");
-  Serial.print(myData.roll);  Serial.print("\t");
-  Serial.print(myData.ax);    Serial.print("\t");
-  Serial.print(myData.ay);    Serial.print("\t");
-  Serial.print(myData.az);    Serial.print("\t");
+  Serial.print(myData.pitch);   Serial.print("\t");
+  Serial.print(myData.roll);    Serial.print("\t");
+  Serial.print(myData.thrust);  Serial.print("\t");
   Serial.println("");
 }
 
@@ -110,7 +106,7 @@ void setup() {
 
   // 1. Start Wi-Fi Access Point
   Serial.println("Starting AP...");
-  WiFi.softAP("Drone_Net", "12345678"); // SSID and Password
+  WiFi.softAP("Drone_Net", "drone_password"); // SSID and Password
   
   // ESP32 default AP IP is usually 192.168.4.1
   Serial.print("AP IP address: ");
@@ -132,11 +128,11 @@ void loop() {
   // 2. Process Failsafe (Extremely Important)
   // If no UDP packet arrives for 200ms, force disarm and zero throttle
   if (millis() - lastPacketTime > 200) {
-    myData.button = 0;
+    myData.arm_drone = 0;
+    myData.killswitch = 1;
     myData.pitch = 0.0;
     myData.roll = 0.0;
-    myData.yaw = 0.0;
-    myData.az = 0.0; // Throttle to 0
+    myData.thrust = 0.0; // Throttle to 0
   }
 
   // 3. Send CRSF to Flight Controller every 10ms
@@ -146,9 +142,11 @@ void loop() {
     // Map iPhone data to CRSF (192 to 1792)
     crsfChannels[0] = mapFloatToCRSF(myData.roll, -1.0, 1.0);
     crsfChannels[1] = mapFloatToCRSF(myData.pitch, -1.0, 1.0);
-    crsfChannels[2] = mapFloatToCRSF(myData.az, 0.0, 1.0);     // Throttle
-    crsfChannels[3] = mapFloatToCRSF(myData.yaw, -1.0, 1.0);   // Yaw
-    crsfChannels[4] = myData.button ? 1792 : 191;              // Arm switch
+    crsfChannels[2] = mapFloatToCRSF(myData.thrust, 0.0, 1.0);  // Throttle
+    crsfChannels[3] = mapFloatToCRSF(0.0, -1.0, 1.0);           // Yaw
+    crsfChannels[4] = myData.arm_drone ? 1792 : 191;            // Arm switch
+    crsfChannels[5] = myData.killswitch ? 1792 : 191;           // Kill switch
+    crsfChannels[6] = myData.hold_alt ? 1792 : 191;             // Hold altitude
 
     sendCRSFChannels(crsfChannels);
 
