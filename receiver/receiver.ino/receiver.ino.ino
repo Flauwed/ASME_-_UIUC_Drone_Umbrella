@@ -1,110 +1,151 @@
-/*
-  Complete project details at https://RandomNerdTutorials.com/esp-now-esp32-arduino-ide/
-  Modified for SBUS Betaflight bridging
-*/
-
 #include <esp_now.h>
 #include <WiFi.h>
-#include "sbus.h"
+#include <esp_wifi.h>
 
-// Note: Replaced the magic numbers 33/32 with your defined pins
-#define RXD1 18
-#define TXD1 17
+#define RXD2 16
+#define TXD2 17
 
-// Initialize bolderflight SBUS TX on Serial1
-// Note: Some older versions of this library use the rx/tx/invert bools in the constructor. 
-// If true/false throws an error, update to just: bfs::SbusTx sbus_tx(&Serial1);
-bfs::SbusTx sbus_tx(&Serial1, RXD1, TXD1, true, false);
-bfs::SbusData data;
+HardwareSerial CRSFSerial(2);
 
-// Structure example to receive data
+uint8_t newMACAddress[] = {0x32, 0xAE, 0xA4, 0x07, 0x0D, 0x66};
+
 typedef struct data_struct_t {
+  float yaw;
+  float pitch;
+  float roll;
   float ax;
   float ay;
   float az;
-  float gx;
-  float gy;
-  float gz;
   int button;
 } data_struct;
 
 data_struct myData;
+unsigned long lastCrsfTime = 0;
 
-// Timer for continuous SBUS transmission
-unsigned long lastSbusTime = 0;
+static const uint8_t CRSF_SYNC = 0xC8;
+static const uint8_t CRSF_FRAMETYPE_RC_CHANNELS_PACKED = 0x16;
 
-void PrintMPUData() {
-  Serial.print("ax: "); Serial.println(myData.ax);
-  Serial.print("ay: "); Serial.println(myData.ay);
-  Serial.print("az: "); Serial.println(myData.az);
+uint16_t crsfChannels[16];
+
+void PrintDataStruct() {
+  Serial.print(myData.yaw);   Serial.print("\t");
+  Serial.print(myData.pitch); Serial.print("\t");
+  Serial.print(myData.roll);  Serial.print("\t");
+  Serial.print(myData.ax);    Serial.print("\t");
+  Serial.print(myData.ay);    Serial.print("\t");
+  Serial.print(myData.az);    Serial.print("\t");
   Serial.println("");
 }
 
-// callback function that will be executed when data is received
 void OnDataRecv(const uint8_t * mac, const uint8_t *incomingData, int len) {
-  memcpy(&myData, incomingData, sizeof(myData));
-  // PrintMPUData(); // Uncomment for debugging, but keeping prints out of callbacks is safer
+  if (len == sizeof(myData)) {
+    memcpy(&myData, incomingData, sizeof(myData));
+  }
 }
 
-// Helper function to map float IMU values (-1.0 to 1.0) to SBUS integer format (192 to 1792)
-int mapFloatToSBUS(float val, float min_in, float max_in) {
-  // Constrain to prevent SBUS channel overflow
+uint8_t crsf_crc8(const uint8_t *ptr, uint8_t len) {
+  uint8_t crc = 0;
+  while (len--) {
+    crc ^= *ptr++;
+    for (uint8_t i = 0; i < 8; i++) {
+      if (crc & 0x80) crc = (crc << 1) ^ 0xD5;
+      else crc <<= 1;
+    }
+  }
+  return crc;
+}
+
+uint16_t constrainCrsf(int v) {
+  if (v < 172) return 172;
+  if (v > 1811) return 1811;
+  return (uint16_t)v;
+}
+
+uint16_t mapFloatToCRSF(float val, float min_in, float max_in) {
   if (val < min_in) val = min_in;
   if (val > max_in) val = max_in;
-  
-  // Map range: 192 (1000us) to 1792 (2000us)
-  float mapped = (val - min_in) * (1792.0 - 192.0) / (max_in - min_in) + 192.0;
-  return (int)mapped;
+  float mapped = (val - min_in) * (1792.0f - 191.0f) / (max_in - min_in) + 191.0f;
+  return constrainCrsf((int)mapped);
+}
+
+void sendCRSFChannels(uint16_t *ch) {
+  uint8_t frame[26] = {0};
+
+  frame[0] = CRSF_SYNC;
+  frame[1] = 24;
+  frame[2] = CRSF_FRAMETYPE_RC_CHANNELS_PACKED;
+
+  uint32_t bitbuf = 0;
+  uint8_t bitsInBuf = 0;
+  uint8_t outIndex = 3;
+
+  for (int i = 0; i < 16; i++) {
+    bitbuf |= ((uint32_t)(ch[i] & 0x07FF)) << bitsInBuf;
+    bitsInBuf += 11;
+
+    while (bitsInBuf >= 8) {
+      frame[outIndex++] = bitbuf & 0xFF;
+      bitbuf >>= 8;
+      bitsInBuf -= 8;
+    }
+  }
+
+  if (bitsInBuf > 0) {
+    frame[outIndex++] = bitbuf & 0xFF;
+  }
+
+  frame[25] = crsf_crc8(&frame[2], 23);
+  CRSFSerial.write(frame, sizeof(frame));
 }
 
 void setup() {
   Serial.begin(115200);
 
-  // Initialize SBUS Transmission
-  sbus_tx.Begin();
+  CRSFSerial.begin(420000, SERIAL_8N1, RXD2, TXD2);
 
-  // Set default safe SBUS values (Centered sticks, zero throttle)
-  for (int i = 0; i < 16; i++) {
-    data.ch[i] = 992; // 1500us center
-  }
-  data.ch[2] = 192;   // Throttle (CH3) to zero (1000us)
+  for (int i = 0; i < 16; i++) crsfChannels[i] = 992;
+  crsfChannels[2] = 191;
 
   WiFi.mode(WIFI_STA);
+  if (esp_wifi_set_mac(WIFI_IF_STA, &newMACAddress[0]) == ESP_OK) {
+    Serial.println("MAC Address Changed Successfully");
+    Serial.println(WiFi.macAddress());
+  }
+
   if (esp_now_init() != ESP_OK) {
     Serial.println("Error initializing ESP-NOW");
     return;
   }
+
   esp_now_register_recv_cb((esp_now_recv_cb_t)OnDataRecv);
 }
- 
+
 void loop() {
-  // SBUS requires a continuous stream of data (~100Hz) to prevent RX_FAILSAFE
-  if (millis() - lastSbusTime >= 10) {
-    lastSbusTime = millis();
+  // 1. Drain the incoming serial buffer as fast as possible (Outside the 10ms timer)
+  while (CRSFSerial.available()) {
+    uint8_t incomingByte = CRSFSerial.read();
+    
+    if (incomingByte == 0xC8) {
+      // The FC is sending telemetry! 
+      // Note: Do not print this every time once you confirm it works, 
+      // or you will flood the Arduino Serial Monitor at 420000 baud.
+      // Serial.println("Success! Received telemetry sync byte from FC.");
+    }
+  }
 
-    // Map axes assuming -1.0g to 1.0g scale. Adjust the min/max limits 
-    // depending on the actual raw output scale of your specific IMU.
-    
-    // CH1 (Roll): Maps horizontal Y acceleration
-    data.ch[0] = mapFloatToSBUS(myData.ay, -1.0, 1.0); 
-    
-    // CH2 (Pitch): Maps horizontal X acceleration
-    data.ch[1] = mapFloatToSBUS(myData.ax, -1.0, 1.0);
-    
-    // CH3 (Throttle): Maps vertical Z acceleration. 
-    // DANGER: If your IMU reads 1.0g at rest due to gravity, this will send 
-    // full throttle! You must subtract gravity or map this to 0.0 - 1.0.
-    data.ch[2] = mapFloatToSBUS(myData.az, 0.0, 1.0);  
-    
-    // CH4 (Yaw): Kept centered so the drone doesn't spin
-    data.ch[3] = 992;
-    
-    // CH5 (AUX1): Use the button to act as an Arm/Disarm switch
-    // Button pressed (1) sends 2000us, released (0) sends 1000us
-    data.ch[4] = myData.button ? 1792 : 192;
+  // 2. Send RC data exactly every 10ms
+  if (millis() - lastCrsfTime >= 10) {
+    lastCrsfTime = millis();
 
-    // Send the packet to the flight controller
-    sbus_tx.data(data);
-    sbus_tx.Write();
+    crsfChannels[0] = mapFloatToCRSF(myData.ay, -1.0, 1.0);
+    crsfChannels[1] = mapFloatToCRSF(myData.ax, -1.0, 1.0);
+    crsfChannels[2] = mapFloatToCRSF(myData.az, 0.0, 1.0);
+    crsfChannels[3] = 992;
+    crsfChannels[4] = myData.button ? 1792 : 191;
+
+    for (int i = 5; i < 16; i++) crsfChannels[i] = 992;
+
+    sendCRSFChannels(crsfChannels);
+    // PrintDataStruct(); // Comment this out if you need maximum UART performance
   }
 }

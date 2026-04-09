@@ -152,8 +152,5 @@ void DeviceDriverSet_MPU6050::DeviceDriverSet_MPU6050_getYawPitchRoll(void)
     Angle.Yaw = fmod(-ypr[0] * 180 / M_PI + 360, 360);
     Angle.Roll = ypr[1] * 180 / M_PI;
     Angle.Pitch = ypr[2] * 180 / M_PI;
-
-    Serial.print("yaw: ");
-    Serial.println(Angle.Yaw);
   }
 }
