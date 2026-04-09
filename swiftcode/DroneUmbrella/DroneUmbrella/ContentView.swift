@@ -12,18 +12,13 @@ struct ContentView: View {
     
     var body: some View {
         VStack(spacing: 50) {
+            Text(String(drone.speed))
             Toggle(isOn: $drone.isArmed) {
                 Text(drone.isArmed ? "ARMED (DANGER)" : "DISARMED")
                     .font(.title)
                     .foregroundColor(drone.isArmed ? .red : .green)
             }
             .padding()
-            
-            VStack {
-                Text("Throttle: \(Int(drone.throttle * 100))%")
-                Slider(value: $drone.throttle, in: 0.0...1.0)
-                    .padding()
-            }
         }
         .padding()
     }
