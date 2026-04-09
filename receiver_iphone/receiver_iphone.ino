@@ -29,6 +29,76 @@ const uint8_t CRSF_FRAMETYPE_RC_CHANNELS_PACKED = 0x16;
 uint16_t crsfChannels[16];
 
 // [Keep your existing crsf_crc8, constrainCrsf, mapFloatToCRSF, and sendCRSFChannels functions here]
+void PrintDataStruct() {
+  Serial.print(myData.yaw);   Serial.print("\t");
+  Serial.print(myData.pitch); Serial.print("\t");
+  Serial.print(myData.roll);  Serial.print("\t");
+  Serial.print(myData.ax);    Serial.print("\t");
+  Serial.print(myData.ay);    Serial.print("\t");
+  Serial.print(myData.az);    Serial.print("\t");
+  Serial.println("");
+}
+
+void OnDataRecv(const uint8_t * mac, const uint8_t *incomingData, int len) {
+  if (len == sizeof(myData)) {
+    memcpy(&myData, incomingData, sizeof(myData));
+  }
+}
+
+uint8_t crsf_crc8(const uint8_t *ptr, uint8_t len) {
+  uint8_t crc = 0;
+  while (len--) {
+    crc ^= *ptr++;
+    for (uint8_t i = 0; i < 8; i++) {
+      if (crc & 0x80) crc = (crc << 1) ^ 0xD5;
+      else crc <<= 1;
+    }
+  }
+  return crc;
+}
+
+uint16_t constrainCrsf(int v) {
+  if (v < 172) return 172;
+  if (v > 1811) return 1811;
+  return (uint16_t)v;
+}
+
+uint16_t mapFloatToCRSF(float val, float min_in, float max_in) {
+  if (val < min_in) val = min_in;
+  if (val > max_in) val = max_in;
+  float mapped = (val - min_in) * (1792.0f - 191.0f) / (max_in - min_in) + 191.0f;
+  return constrainCrsf((int)mapped);
+}
+
+void sendCRSFChannels(uint16_t *ch) {
+  uint8_t frame[26] = {0};
+
+  frame[0] = CRSF_SYNC;
+  frame[1] = 24;
+  frame[2] = CRSF_FRAMETYPE_RC_CHANNELS_PACKED;
+
+  uint32_t bitbuf = 0;
+  uint8_t bitsInBuf = 0;
+  uint8_t outIndex = 3;
+
+  for (int i = 0; i < 16; i++) {
+    bitbuf |= ((uint32_t)(ch[i] & 0x07FF)) << bitsInBuf;
+    bitsInBuf += 11;
+
+    while (bitsInBuf >= 8) {
+      frame[outIndex++] = bitbuf & 0xFF;
+      bitbuf >>= 8;
+      bitsInBuf -= 8;
+    }
+  }
+
+  if (bitsInBuf > 0) {
+    frame[outIndex++] = bitbuf & 0xFF;
+  }
+
+  frame[25] = crsf_crc8(&frame[2], 23);
+  CRSFSerial.write(frame, sizeof(frame));
+}
 
 void setup() {
   Serial.begin(115200);
