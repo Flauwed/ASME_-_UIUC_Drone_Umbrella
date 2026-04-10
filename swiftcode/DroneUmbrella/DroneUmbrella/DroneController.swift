@@ -15,15 +15,20 @@ import Combine
 struct DroneData {
     var pitch: Float32 = 0
     var roll: Float32 = 0
+    var thrust: Float32 = 0.5
     var enabled: Int32 = 0  // 1 = Arm, 0 = Disarm
+    var kill: Int32 = 0
 }
 
 class DroneController: NSObject, CLLocationManagerDelegate, ObservableObject {
-    @Published var isArmed: Bool = false
-    @Published var tracking: Bool = false
-    @Published var speed: Double = 0
+    @Published var droneData = DroneData() {
+        didSet {
+            sendData(droneData)
+        }
+    }
     
-//    private var motionManager = CMMotionManager()
+    
+    private var motionManager = CMMotionManager()
     private let udpConnection: NWConnection
     private let locationManager = CLLocationManager()
     
@@ -48,16 +53,14 @@ class DroneController: NSObject, CLLocationManagerDelegate, ObservableObject {
         
         print("requested")
         
-//        guard motionManager.isDeviceMotionAvailable else { return }
-//        
-//        // Use Apple's sensor fusion (requires compass + gyro + accel)
-//        motionManager.deviceMotionUpdateInterval = 1.0 / 50.0 // 50 Hz
-//        motionManager.startDeviceMotionUpdates(using: .xMagneticNorthZVertical)
-        
-//        // Run network transmission on a 50Hz timer loop
-//        timer = Timer.scheduledTimer(withTimeInterval: 0.02, repeats: true) { [weak self] _ in
-//            self?.sendPacket()
-//        }
+        if motionManager.isAccelerometerAvailable {
+            motionManager.deviceMotionUpdateInterval = 1 / 50.0
+            motionManager.startDeviceMotionUpdates(using: .xTrueNorthZVertical, to: .main) { motion, error in
+                guard let motion = motion else { return }
+                
+                // TODO: update pitch and roll with acceleration
+            }
+        }
         
     }
 
@@ -68,14 +71,13 @@ class DroneController: NSObject, CLLocationManagerDelegate, ObservableObject {
         
         let speed = loc.speed
         let heading = loc.course * .pi / 180.0
-        
-        self.speed = speed
-        
+                
         if speed < 0 || speed > 1 { return }
         
-        let data = DroneData(pitch: Float32(speed * sin(heading)), roll: Float32(speed * cos(heading)), enabled: 1)
+        let vx = Float32(speed * cos(heading))
+        let vy = Float32(speed * sin(heading))
         
-        sendData(data)
+        // TODO: update pitch and roll with velocity
     }
     
     func sendData(_ data: DroneData) {
