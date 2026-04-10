@@ -34,10 +34,7 @@ struct ContentView: View {
             Slider(value: Binding(
                 get: { Double(drone.droneData.thrust) },
                 set: { drone.droneData.thrust = Float($0) }
-            ), in: 0...1, onEditingChanged: { editing in
-                // Auto-center thrust when released
-                drone.droneData.thrust = Float(0.5)
-            })
+            ), in: 0...1)
             .padding()
             
             HStack {
@@ -70,7 +67,14 @@ struct ContentView: View {
             }
             .frame(height: 150) // gives room for the circles
             .padding()
-            
+            Toggle("Angle Mode", isOn: Binding(
+                get: { drone.droneData.angle != 0 },
+                set: {drone.droneData.angle = $0 ? 1 : 0 }
+            ))
+            Toggle("Hold alt Mode", isOn: Binding(
+                get: { drone.droneData.holdAlt != 0 },
+                set: {drone.droneData.holdAlt = $0 ? 1 : 0 }
+            ))
             Spacer()
         }
         .padding()

@@ -1,8 +1,8 @@
 //
-//  DroneController.swift
-//  DroneUmbrella
+//  DroneController.swift
+//  DroneUmbrella
 //
-//  Created by Jet Trommer on 4/9/26.
+//  Created by Jet Trommer on 4/9/26.
 //
 
 import Foundation
@@ -18,6 +18,8 @@ struct DroneData {
     var thrust: Float32 = 0.5
     var enabled: Int32 = 0  // 1 = Arm, 0 = Disarm
     var kill: Int32 = 0
+    var angle: Int32 = 0
+    var holdAlt: Int32 = 0
 }
 
 class DroneController: NSObject, CLLocationManagerDelegate, ObservableObject {
@@ -38,41 +40,25 @@ class DroneController: NSObject, CLLocationManagerDelegate, ObservableObject {
     private var timer: Timer?
     
     override init() {
+
         let host = NWEndpoint.Host("192.168.4.1")
         let port = NWEndpoint.Port(integerLiteral: 4444)
-        
-        // Create custom UDP parameters
-        let parameters = NWParameters.udp
 
-        // FORCE the app to only use Wi-Fi, preventing the "No network route" cellular bug
-        parameters.requiredInterfaceType = .wifi
-        parameters.prohibitedInterfaceTypes = [.cellular]
-        
-        parameters.allowLocalEndpointReuse = true
-
-        udpConnection = NWConnection(host: host, port: port, using: parameters)
-        
+        self.udpConnection = NWConnection(host: host, port: port, using: .udp)
         super.init()
         
-        // Handle connection state changes
-        udpConnection.stateUpdateHandler = { [weak self] state in
-            // Dispatch to main thread so SwiftUI can safely update the UI
+        // Monitor connection status
+        self.udpConnection.stateUpdateHandler = { [weak self] state in
             DispatchQueue.main.async {
                 switch state {
                 case .ready:
-                    print("✅ UDP Connection Ready!")
+                    print("✅ Connection ready")
                     self?.isConnectionReady = true
-                case .waiting(let error):
-                    print("⏳ UDP Connection Waiting: \(error.localizedDescription)")
-                    self?.isConnectionReady = false
                 case .failed(let error):
-                    print("❌ UDP Connection Failed: \(error.localizedDescription)")
+                    print("❌ Connection failed: \(error)")
                     self?.isConnectionReady = false
-                case .preparing:
-                    print("🔄 UDP Connection Preparing...")
-                    self?.isConnectionReady = false
-                case .cancelled:
-                    print("🛑 UDP Connection Cancelled")
+                case .waiting(let error):
+                    print("⏳ Connection waiting: \(error)")
                     self?.isConnectionReady = false
                 default:
                     break
@@ -80,8 +66,11 @@ class DroneController: NSObject, CLLocationManagerDelegate, ObservableObject {
             }
         }
         
-        udpConnection.start(queue: .global())
+        
+        
+        self.udpConnection.start(queue: .global())
         startSensors()
+        
     }
     
     private func startSensors() {
@@ -105,7 +94,6 @@ class DroneController: NSObject, CLLocationManagerDelegate, ObservableObject {
 
     // Handler required to conform to CLLocationManagerDelegate
     func locationManager(_ manager: CLLocationManager, didUpdateLocations locations: [CLLocation]) {
-        print("updating")
         guard let loc = locations.last else { return }
         
         let speed = loc.speed
@@ -120,8 +108,6 @@ class DroneController: NSObject, CLLocationManagerDelegate, ObservableObject {
     }
     
     func sendData(_ data: DroneData) {
-        guard isConnectionReady else { return }
-        
         var packet = data
         
         withUnsafeBytes(of: &packet) { rawBytes in
@@ -129,16 +115,13 @@ class DroneController: NSObject, CLLocationManagerDelegate, ObservableObject {
             
             // Use the built-in defaultMessage context instead of creating a custom one.
             // isComplete: false tells iOS "this stream is still open, do not close the socket!"
-            udpConnection.send(content: payload, contentContext: .defaultMessage, isComplete: false, completion: .contentProcessed({ error in
+            self.udpConnection.send(content: payload, completion: .contentProcessed { error in
                 if let error = error {
-                    print("UDP Send Error: \(error.localizedDescription)")
-                    
-                    // If the socket dies, update the UI
-                    DispatchQueue.main.async {
-                        self.isConnectionReady = false
-                    }
+                    print("Send error: \(error)")
+                } else {
+                    print("Packet sent successfully!")
                 }
-            }))
+            })
         }
     }
 }

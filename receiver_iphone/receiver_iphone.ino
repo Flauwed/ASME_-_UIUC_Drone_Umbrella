@@ -4,6 +4,7 @@
 
 #define RXD2 16
 #define TXD2 17
+// #define FAILSAFE
 
 HardwareSerial CRSFSerial(2);
 WiFiUDP udp;
@@ -15,6 +16,8 @@ typedef struct __attribute__((packed)) {
   float thrust;
   int32_t enabled;
   int32_t kill;
+  int32_t angle;
+  int32_t hold_alt;
 } data_struct;
 
 data_struct myData;
@@ -31,6 +34,8 @@ void PrintDataStruct() {
   Serial.print(myData.pitch);   Serial.print("\t");
   Serial.print(myData.roll);    Serial.print("\t");
   Serial.print(myData.thrust);  Serial.print("\t");
+  Serial.print(myData.enabled);  Serial.print("\t");
+  Serial.print(myData.kill);  Serial.print("\t");
   Serial.println("");
 }
 
@@ -150,22 +155,23 @@ void setup() {
 void loop() {
   // 1. Check for incoming UDP packets from the iPhone
   int packetSize = udp.parsePacket();
-  if (udp.available() > 0) {
-    Serial.println("Packet recieved!!");
-  }
   if (packetSize == sizeof(myData)) {
     udp.read((char *)&myData, sizeof(myData));
     Serial.println("Packet received.");
     lastPacketTime = millis(); // Reset failsafe timer
+
+    PrintDataStruct();
   }
 
   // 2. Process Failsafe (Extremely Important)
   // If no UDP packet arrives for 200ms, force disarm and zero throttle
+#ifdef FAILSAFE
   if (millis() - lastPacketTime > 200) {
     myData.enabled = 0;
     myData.kill = 1;
     ZeroDrone();
   }
+#endif
 
   // 3. Send CRSF to Flight Controller every 10ms
   if (millis() - lastCrsfTime >= 10) {
@@ -178,8 +184,8 @@ void loop() {
     crsfChannels[3] = mapFloatToCRSF(0.0, -1.0, 1.0);           // Yaw
     crsfChannels[4] = myData.enabled ? 1792 : 191;            // Arm switch
     crsfChannels[5] = myData.kill ? 1792 : 191;           // Kill switch
-    // crsfChannels[6] = myData.hold_alt ? 1792 : 191;             // Hold altitude
-    crsfChannels[6] = 191;  // Hold altitude: false
+    crsfChannels[6] = myData.angle ? 1792 : 191;      // Angle mode
+    crsfChannels[7] = myData.hold_alt ? 1792 : 191;  // Hold altitude
 
     sendCRSFChannels(crsfChannels);
 
