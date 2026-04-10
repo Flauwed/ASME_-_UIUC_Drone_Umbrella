@@ -24,9 +24,12 @@ class DroneController: NSObject, CLLocationManagerDelegate, ObservableObject {
     @Published var droneData = DroneData() {
         didSet {
             sendData(droneData)
+            print("sending packet")
         }
     }
     
+    // NEW: Expose connection state to SwiftUI
+    @Published var isConnectionReady = false
     
     private var motionManager = CMMotionManager()
     private let udpConnection: NWConnection
@@ -40,8 +43,34 @@ class DroneController: NSObject, CLLocationManagerDelegate, ObservableObject {
         
         udpConnection = NWConnection(host: host, port: port, using: .udp)
         super.init()
+        
+        // Handle connection state changes
+        udpConnection.stateUpdateHandler = { [weak self] state in
+            // Dispatch to main thread so SwiftUI can safely update the UI
+            DispatchQueue.main.async {
+                switch state {
+                case .ready:
+                    print("✅ UDP Connection Ready!")
+                    self?.isConnectionReady = true
+                case .waiting(let error):
+                    print("⏳ UDP Connection Waiting: \(error.localizedDescription)")
+                    self?.isConnectionReady = false
+                case .failed(let error):
+                    print("❌ UDP Connection Failed: \(error.localizedDescription)")
+                    self?.isConnectionReady = false
+                case .preparing:
+                    print("🔄 UDP Connection Preparing...")
+                    self?.isConnectionReady = false
+                case .cancelled:
+                    print("🛑 UDP Connection Cancelled")
+                    self?.isConnectionReady = false
+                default:
+                    break
+                }
+            }
+        }
+        
         udpConnection.start(queue: .global())
-
         startSensors()
     }
     
@@ -56,7 +85,7 @@ class DroneController: NSObject, CLLocationManagerDelegate, ObservableObject {
         if motionManager.isAccelerometerAvailable {
             motionManager.deviceMotionUpdateInterval = 1 / 50.0
             motionManager.startDeviceMotionUpdates(using: .xTrueNorthZVertical, to: .main) { motion, error in
-                guard let motion = motion else { return }
+                guard let _ = motion else { return }
                 
                 // TODO: update pitch and roll with acceleration
             }
@@ -74,13 +103,15 @@ class DroneController: NSObject, CLLocationManagerDelegate, ObservableObject {
                 
         if speed < 0 || speed > 1 { return }
         
-        let vx = Float32(speed * cos(heading))
-        let vy = Float32(speed * sin(heading))
+        let _ = Float32(speed * cos(heading))
+        let _ = Float32(speed * sin(heading))
         
         // TODO: update pitch and roll with velocity
     }
     
     func sendData(_ data: DroneData) {
+        guard isConnectionReady else { return }
+        
         var packet = data
         
         withUnsafeBytes(of: &packet) { rawBytes in

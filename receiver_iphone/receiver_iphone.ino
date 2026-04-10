@@ -13,9 +13,8 @@ typedef struct __attribute__((packed)) {
   float pitch;
   float roll;
   float thrust;
-  bool arm_drone;
-  bool killswitch;
-  bool hold_alt;
+  int32_t enabled;
+  int32_t kill;
 } data_struct;
 
 data_struct myData;
@@ -96,6 +95,32 @@ void sendCRSFChannels(uint16_t *ch) {
   CRSFSerial.write(frame, sizeof(frame));
 }
 
+// Set pitch, roll, and thrust to 0.
+void ZeroDrone() {
+  myData.pitch = 0.0;
+  myData.roll = 0.0;
+  myData.thrust = 0.0; // Throttle to 0
+}
+
+// ---- NEW: WiFi Event Callbacks ----
+void onStationConnected(WiFiEvent_t event, WiFiEventInfo_t info) {
+  Serial.println("========================================");
+  Serial.print("NEW DEVICE CONNECTED TO DRONE_NET!\n");
+  Serial.print("MAC Address: ");
+  for(int i = 0; i < 6; i++){
+    Serial.printf("%02X", info.wifi_ap_staconnected.mac[i]);
+    if(i < 5) Serial.print(":");
+  }
+  Serial.println("\n========================================");
+}
+
+void onStationDisconnected(WiFiEvent_t event, WiFiEventInfo_t info) {
+  Serial.println("========================================");
+  Serial.println("DEVICE DISCONNECTED FROM DRONE_NET!");
+  Serial.println("========================================");
+}
+// -----------------------------------
+
 void setup() {
   Serial.begin(115200);
   CRSFSerial.begin(420000, SERIAL_8N1, RXD2, TXD2);
@@ -103,6 +128,11 @@ void setup() {
   // Default failsafe channels
   for (int i = 0; i < 16; i++) crsfChannels[i] = 992;
   crsfChannels[2] = 191; // Throttle low
+
+  // ---- NEW: Register the Event Listeners ----
+  WiFi.onEvent(onStationConnected, ARDUINO_EVENT_WIFI_AP_STACONNECTED);
+  WiFi.onEvent(onStationDisconnected, ARDUINO_EVENT_WIFI_AP_STADISCONNECTED);
+  // -----------------------------------------
 
   // 1. Start Wi-Fi Access Point
   Serial.println("Starting AP...");
@@ -120,19 +150,21 @@ void setup() {
 void loop() {
   // 1. Check for incoming UDP packets from the iPhone
   int packetSize = udp.parsePacket();
+  if (udp.available() > 0) {
+    Serial.println("Packet recieved!!");
+  }
   if (packetSize == sizeof(myData)) {
     udp.read((char *)&myData, sizeof(myData));
+    Serial.println("Packet received.");
     lastPacketTime = millis(); // Reset failsafe timer
   }
 
   // 2. Process Failsafe (Extremely Important)
   // If no UDP packet arrives for 200ms, force disarm and zero throttle
   if (millis() - lastPacketTime > 200) {
-    myData.arm_drone = 0;
-    myData.killswitch = 1;
-    myData.pitch = 0.0;
-    myData.roll = 0.0;
-    myData.thrust = 0.0; // Throttle to 0
+    myData.enabled = 0;
+    myData.kill = 1;
+    ZeroDrone();
   }
 
   // 3. Send CRSF to Flight Controller every 10ms
@@ -144,9 +176,10 @@ void loop() {
     crsfChannels[1] = mapFloatToCRSF(myData.pitch, -1.0, 1.0);
     crsfChannels[2] = mapFloatToCRSF(myData.thrust, 0.0, 1.0);  // Throttle
     crsfChannels[3] = mapFloatToCRSF(0.0, -1.0, 1.0);           // Yaw
-    crsfChannels[4] = myData.arm_drone ? 1792 : 191;            // Arm switch
-    crsfChannels[5] = myData.killswitch ? 1792 : 191;           // Kill switch
-    crsfChannels[6] = myData.hold_alt ? 1792 : 191;             // Hold altitude
+    crsfChannels[4] = myData.enabled ? 1792 : 191;            // Arm switch
+    crsfChannels[5] = myData.kill ? 1792 : 191;           // Kill switch
+    // crsfChannels[6] = myData.hold_alt ? 1792 : 191;             // Hold altitude
+    crsfChannels[6] = 191;  // Hold altitude: false
 
     sendCRSFChannels(crsfChannels);
 

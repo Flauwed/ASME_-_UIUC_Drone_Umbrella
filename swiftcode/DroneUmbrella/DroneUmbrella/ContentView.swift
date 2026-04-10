@@ -14,50 +14,64 @@ struct ContentView: View {
         drone.droneData.enabled != 0
     }
     
-    
-    
     var body: some View {
-        Text("Thrust: " + String(drone.droneData.thrust))
         VStack(spacing: 50) {
+            
+            // ---- NEW: Status Indicator ----
+            HStack {
+                Circle()
+                    .fill(drone.isConnectionReady ? Color.green : Color.red)
+                    .frame(width: 12, height: 12)
+                Text(drone.isConnectionReady ? "Connected to Drone" : "Disconnected")
+                    .font(.headline)
+                    .foregroundColor(drone.isConnectionReady ? .green : .red)
+            }
+            .padding(.top, 20)
+            // -------------------------------
+            
+            Text("Thrust: " + String(format: "%.2f", drone.droneData.thrust))
+            
             Slider(value: Binding(
                 get: { Double(drone.droneData.thrust) },
                 set: { drone.droneData.thrust = Float($0) }
             ), in: 0...1, onEditingChanged: { editing in
-                print("editing changed")
+                // Auto-center thrust when released
                 drone.droneData.thrust = Float(0.5)
             })
-                .padding()
-            HStack {
-                        Button(action: {
-                            drone.droneData.enabled = 1
-                        }) {
-                            Text("Enabled")
-                                .foregroundColor(enabledBool ? .white : .green)
-                                .padding()
-                                .frame(maxWidth: .infinity)
-                                .background(
-                                    Circle()
-                                        .fill(enabledBool ? Color.green : Color.clear)
-                                )
-                        }
-
-                        // Disable Button (right)
-                        Button(action: {
-                            drone.droneData.enabled = 0
-                        }) {
-                            Text("Disabled")
-                                .foregroundColor(!enabledBool ? .white : .red)
-                                .padding()
-                                .frame(maxWidth: .infinity)
-                                .background(
-                                    Circle()
-                                        .fill(!enabledBool ? Color.red : Color.clear)
-                                )
-                        }
-                    }
-                    .frame(height: 150) // gives room for the circles
-                    .padding()
             .padding()
+            
+            HStack {
+                Button(action: {
+                    drone.droneData.enabled = 1
+                }) {
+                    Text("Enabled")
+                        .foregroundColor(enabledBool ? .white : .green)
+                        .padding()
+                        .frame(maxWidth: .infinity)
+                        .background(
+                            Circle()
+                                .fill(enabledBool ? Color.green : Color.clear)
+                        )
+                }
+
+                // Disable Button (right)
+                Button(action: {
+                    drone.droneData.enabled = 0
+                }) {
+                    Text("Disabled")
+                        .foregroundColor(!enabledBool ? .white : .red)
+                        .padding()
+                        .frame(maxWidth: .infinity)
+                        .background(
+                            Circle()
+                                .fill(!enabledBool ? Color.red : Color.clear)
+                        )
+                }
+            }
+            .frame(height: 150) // gives room for the circles
+            .padding()
+            
+            Spacer()
         }
         .padding()
     }
