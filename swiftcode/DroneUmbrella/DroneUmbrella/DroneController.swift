@@ -41,7 +41,17 @@ class DroneController: NSObject, CLLocationManagerDelegate, ObservableObject {
         let host = NWEndpoint.Host("192.168.4.1")
         let port = NWEndpoint.Port(integerLiteral: 4444)
         
-        udpConnection = NWConnection(host: host, port: port, using: .udp)
+        // Create custom UDP parameters
+        let parameters = NWParameters.udp
+
+        // FORCE the app to only use Wi-Fi, preventing the "No network route" cellular bug
+        parameters.requiredInterfaceType = .wifi
+        parameters.prohibitedInterfaceTypes = [.cellular]
+        
+        parameters.allowLocalEndpointReuse = true
+
+        udpConnection = NWConnection(host: host, port: port, using: parameters)
+        
         super.init()
         
         // Handle connection state changes
@@ -116,7 +126,19 @@ class DroneController: NSObject, CLLocationManagerDelegate, ObservableObject {
         
         withUnsafeBytes(of: &packet) { rawBytes in
             let payload = Data(rawBytes)
-            udpConnection.send(content: payload, completion: .idempotent)
+            
+            // Use the built-in defaultMessage context instead of creating a custom one.
+            // isComplete: false tells iOS "this stream is still open, do not close the socket!"
+            udpConnection.send(content: payload, contentContext: .defaultMessage, isComplete: false, completion: .contentProcessed({ error in
+                if let error = error {
+                    print("UDP Send Error: \(error.localizedDescription)")
+                    
+                    // If the socket dies, update the UI
+                    DispatchQueue.main.async {
+                        self.isConnectionReady = false
+                    }
+                }
+            }))
         }
     }
 }
