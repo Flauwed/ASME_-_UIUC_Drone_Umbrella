@@ -1,13 +1,13 @@
 //
-//  ContentView.swift
+//  LandingPage.swift
 //  DroneUmbrella
 //
-//  Created by Jet Trommer on 4/9/26.
+//  Created by Michael Bauer on 4/12/26.
 //
 
 import SwiftUI
 
-struct ContentView: View {
+struct LandingPage: View {
     @StateObject var drone = DroneController()
     
     var enabledBool: Bool {
@@ -44,9 +44,10 @@ struct ContentView: View {
                     Text("Enabled")
                         .foregroundColor(enabledBool ? .white : .green)
                         .padding()
-                        .frame(maxWidth: .infinity)
+                        .frame(width: 100, height: 100)
                         .background(
                             Circle()
+                                .stroke(Color.black, lineWidth: 2)
                                 .fill(enabledBool ? Color.green : Color.clear)
                         )
                 }
@@ -58,14 +59,14 @@ struct ContentView: View {
                     Text("Disabled")
                         .foregroundColor(!enabledBool ? .white : .red)
                         .padding()
-                        .frame(maxWidth: .infinity)
+                        .frame(width: 100, height: 250)
                         .background(
                             Circle()
+                                .stroke(Color.black, lineWidth: 2)
                                 .fill(!enabledBool ? Color.red : Color.clear)
                         )
                 }
             }
-            .frame(height: 150) // gives room for the circles
             .padding()
             Toggle("Angle Mode", isOn: Binding(
                 get: { drone.droneData.angle != 0 },
