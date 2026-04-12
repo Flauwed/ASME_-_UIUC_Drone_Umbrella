@@ -8,10 +8,10 @@
 import SwiftUI
 
 @main
-struct DroneUmbrellaApp: App {
+struct DroneUmbrellaApp: App {    
     var body: some Scene {
         WindowGroup {
-            ContentView()
+            LandingPageView()
         }
     }
 }
